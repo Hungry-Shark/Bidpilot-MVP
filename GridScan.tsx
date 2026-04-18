@@ -501,11 +501,19 @@ export const GridScan = ({
 
     const onResize = () => {
       if (!container) return;
-      renderer.setSize(container.clientWidth, container.clientHeight);
-      material.uniforms.iResolution.value.set(container.clientWidth, container.clientHeight, renderer.getPixelRatio());
-      if (composerRef.current) composerRef.current.setSize(container.clientWidth, container.clientHeight);
+      const width = container.clientWidth;
+      const height = container.clientHeight;
+      if (width === 0 || height === 0) return;
+
+      renderer.setSize(width, height);
+      material.uniforms.iResolution.value.set(width, height, renderer.getPixelRatio());
+      if (composerRef.current) composerRef.current.setSize(width, height);
     };
-    window.addEventListener('resize', onResize);
+
+    const resizeObserver = new ResizeObserver(() => {
+      onResize();
+    });
+    resizeObserver.observe(container);
 
     let last = performance.now();
     const tick = () => {
@@ -557,7 +565,7 @@ export const GridScan = ({
 
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
-      window.removeEventListener('resize', onResize);
+      resizeObserver.disconnect();
       material.dispose();
       quad.geometry.dispose();
 

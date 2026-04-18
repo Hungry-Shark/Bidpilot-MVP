@@ -1,5 +1,9 @@
 {
-  "name": "BidPilot MVP",
-  "description": "An autonomous agentic AI ecosystem for proposal management and RFP automation using Gemini 3.0.",
-  "requestFramePermissions": []
+  "name": "BidPilot",
+  "description": "An autonomous agentic AI ecosystem for proposal management and RFP automation using Gemini.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ],
+  "majorCapabilities": []
 }

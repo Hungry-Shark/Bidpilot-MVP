@@ -1,42 +1,49 @@
 import React, { useState, useEffect, useRef } from 'react';
-import {
-  ShieldAlert,
-  FileText,
-  CheckCircle2,
-  XCircle,
-  Settings,
-  Terminal,
-  Activity,
-  ChevronRight,
-  BrainCircuit,
-  FileSpreadsheet,
-  AlertTriangle,
-  Play,
-  LayoutDashboard,
-  Database,
-  PenTool,
-  Code,
-  Search,
-  Cpu,
-  MoreHorizontal,
-  Plus,
-  ArrowUpRight,
-  Command,
-  Clock,
-  User,
-  Trash2,
-  Upload,
-  Save,
-  Moon,
-  Sun,
-  Download,
-  Printer
+import { 
+  ShieldAlert, 
+  FileText, 
+  CheckCircle2, 
+  XCircle, 
+  Settings, 
+  Terminal, 
+  Activity, 
+  ChevronRight, 
+  BrainCircuit, 
+  FileSpreadsheet, 
+  AlertTriangle, 
+  Play, 
+  LayoutDashboard, 
+  Database, 
+  PenTool, 
+  Code, 
+  Search, 
+  Cpu, 
+  MoreHorizontal, 
+  Plus, 
+  ArrowUpRight, 
+  Command, 
+  Clock, 
+  User, 
+  Trash2, 
+  Upload, 
+  Save, 
+  Moon, 
+  Sun, 
+  Download, 
+  Printer,
+  LogOut,
+  LogIn,
+  Share2
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { LogEntry, SimulationState, Document, Constraint } from './types';
 import { INITIAL_CONSTRAINTS, MOCK_KNOWLEDGE_BASE, MOCK_RFP_CONTENT } from './constants';
 import * as GeminiService from './services/geminiService';
+import * as RAGService from './services/ragService';
 import { GridScan } from './GridScan';
+import { auth, signInWithGoogle } from './firebase';
+import { onAuthStateChanged, signOut, User as FirebaseUser } from 'firebase/auth';
+import { MemoryGraph } from './components/MemoryGraph';
 
 // --- Reusable Shadcn-like Components ---
 
@@ -117,13 +124,15 @@ const Badge = ({ children, variant = "default" }: { children?: React.ReactNode, 
 // --- Main App ---
 
 export default function BidPilotApp() {
-  const [view, setView] = useState<'dashboard' | 'setup' | 'analysis' | 'knowledge' | 'draft'>('dashboard');
+  const [view, setView] = useState<'dashboard' | 'setup' | 'analysis' | 'knowledge' | 'draft' | 'memory'>('dashboard');
   const [isDarkMode, setIsDarkMode] = useState(false);
+  const [user, setUser] = useState<FirebaseUser | null>(null);
   
   // App State
   const [documents, setDocuments] = useState<Document[]>(MOCK_KNOWLEDGE_BASE);
   const [constraints, setConstraints] = useState<Constraint[]>(INITIAL_CONSTRAINTS);
   const [rfpInput, setRfpInput] = useState(MOCK_RFP_CONTENT);
+  const [graphData, setGraphData] = useState<{nodes: any[], links: any[]}>({ nodes: [], links: [] });
   
   // Simulation State
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -135,8 +144,25 @@ export default function BidPilotApp() {
   });
   const [draftContent, setDraftContent] = useState("");
   const [gatekeeperReasoning, setGatekeeperReasoning] = useState("");
+  const [auditResult, setAuditResult] = useState<{score: number, check: string} | null>(null);
   const logsEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (u) => {
+      setUser(u);
+      if (u) {
+        RAGService.fetchMemoryGraph().then(setGraphData);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (view === 'memory' && user) {
+      RAGService.fetchMemoryGraph().then(setGraphData);
+    }
+  }, [view, user]);
 
   useEffect(() => {
     if (view === 'analysis') {
@@ -246,14 +272,9 @@ export default function BidPilotApp() {
     
     addLog('Historian', `Scanning Knowledge Base (${documents.length} documents)...`, 'thinking');
     
-    if (latestDoc.status === 'pending') {
-        addLog('Historian', `Detecting new file: ${latestDoc.name}`, 'info');
-        setDocuments(prev => prev.map(d => d.id === latestDoc.id ? { ...d, status: 'indexed', tags: d.tags.filter(t => t !== 'Pending') } : d));
-    }
-
-    setSimState(prev => ({ ...prev, currentAgent: 'Historian', progress: 10 }));
-    
-    const histMsg = await GeminiService.runHistorianAgent(latestDoc.name);
+    // Pass RFP content as mock 'doc content' for RAG demo if needed, 
+    // but runHistorianAgent now expects content.
+    const histMsg = await GeminiService.runHistorianAgent(latestDoc.name, rfpInput);
     addLog('Historian', histMsg, 'success');
     addLog('Historian', 'Context vector database updated.', 'info');
     await new Promise(r => setTimeout(r, 1000));
@@ -291,9 +312,13 @@ export default function BidPilotApp() {
     addLog('Architect', 'Draft generation complete. Handing off to Auditor.', 'success');
     
     setSimState(prev => ({ ...prev, currentAgent: 'Auditor', progress: 95 }));
-    await new Promise(r => setTimeout(r, 800));
-    addLog('Auditor', 'Verifying font compliance (Arial 11pt)... OK', 'success');
-    addLog('Auditor', 'Checking page limit constraints... OK', 'success');
+    addLog('Auditor', 'Mapping draft compliance against original RFP requirements...', 'thinking');
+    
+    const audit = await GeminiService.runAuditorAgent(draft, rfpInput);
+    setAuditResult(audit);
+    
+    addLog('Auditor', `Correctness Audit Complete. Confidence Score: ${audit.score}%`, 'success');
+    addLog('Auditor', audit.check, 'info');
 
     setSimState(prev => ({ ...prev, isActive: false, currentAgent: null, progress: 100 }));
     addLog('System', 'Workflow Complete. Proposal ready for review.', 'success');
@@ -555,6 +580,24 @@ export default function BidPilotApp() {
       </div>
 
       <div className="flex flex-col space-y-4">
+         {auditResult && (
+           <Card className="p-6 bg-zinc-950 border-zinc-800">
+             <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-medium text-zinc-400 uppercase tracking-wider">Accuracy Meter</h3>
+                <Badge variant={auditResult.score > 80 ? "success" : "warning"}>{auditResult.score}% Accurate</Badge>
+             </div>
+             <div className="space-y-2">
+                <div className="h-1.5 w-full bg-zinc-800 rounded-full overflow-hidden">
+                   <div 
+                     className={`h-full transition-all duration-1000 ${auditResult.score > 80 ? 'bg-emerald-500' : 'bg-amber-500'}`} 
+                     style={{ width: `${auditResult.score}%` }} 
+                   />
+                </div>
+                <p className="text-[10px] text-zinc-500 font-mono">{auditResult.check}</p>
+             </div>
+           </Card>
+         )}
+         
          <Card className="p-6">
             <h3 className="text-sm font-medium text-zinc-500 dark:text-zinc-400 mb-4 uppercase tracking-wider">Mission Control</h3>
             <div className="space-y-6">
@@ -773,24 +816,43 @@ export default function BidPilotApp() {
             <PenTool size={18} />
             <span>Drafting Room</span>
           </button>
+          <button 
+             onClick={() => setView('memory')}
+             className={`w-full flex items-center space-x-3 px-3 py-2 rounded-md text-sm font-medium transition-all duration-200 ${view === 'memory' ? 'bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-50' : 'text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50 dark:text-zinc-400 dark:hover:bg-zinc-900 dark:hover:text-zinc-50'}`}
+          >
+            <Share2 size={18} />
+            <span>Memory Graph</span>
+          </button>
         </nav>
 
         <div className="p-4 border-t border-zinc-100 dark:border-zinc-800">
-           <div className="flex items-center justify-between">
-             <div className="flex items-center space-x-3 px-2">
-                <div className="h-8 w-8 rounded-full bg-zinc-200 flex items-center justify-center text-xs font-medium text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
-                  JD
-                </div>
-                <div className="text-sm">
-                  <p className="font-medium text-zinc-900 dark:text-zinc-50">John Doe</p>
-                  <p className="text-xs text-zinc-500 dark:text-zinc-400">Free Plan</p>
-                </div>
+           {user ? (
+             <div className="flex items-center justify-between">
+               <div className="flex items-center space-x-3 px-2">
+                  <div className="h-8 w-8 rounded-full bg-zinc-200 flex items-center justify-center text-xs font-medium text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400 overflow-hidden">
+                    {user.photoURL ? <img src={user.photoURL} alt="" referrerPolicy="no-referrer" /> : user.email?.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="text-sm">
+                    <p className="font-medium text-zinc-900 dark:text-zinc-50 truncate w-24">
+                      {user.displayName || user.email?.split('@')[0]}
+                    </p>
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400">Pro Plan</p>
+                  </div>
+               </div>
+               <Button variant="ghost" size="icon" onClick={() => signOut(auth)} className="rounded-full h-8 w-8 text-zinc-400 hover:text-rose-500">
+                 <LogOut size={16} />
+               </Button>
              </div>
-             
-             {/* Dark Mode Toggle in Footer */}
-             <Button variant="ghost" size="icon" onClick={toggleDarkMode} className="rounded-full h-8 w-8 text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-50">
-               {isDarkMode ? <Sun size={16} /> : <Moon size={16} />}
+           ) : (
+             <Button className="w-full" size="sm" onClick={signInWithGoogle}>
+               <LogIn className="w-4 h-4 mr-2" /> Sign In
              </Button>
+           )}
+           
+           <div className="mt-4 flex items-center justify-center pt-4 border-t border-zinc-50 dark:border-zinc-800">
+              <Button variant="ghost" size="icon" onClick={toggleDarkMode} className="rounded-full h-8 w-8 text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-50">
+                {isDarkMode ? <Sun size={16} /> : <Moon size={16} />}
+              </Button>
            </div>
         </div>
       </aside>
@@ -815,6 +877,17 @@ export default function BidPilotApp() {
               {view === 'analysis' && renderAnalysis()}
               {view === 'knowledge' && renderKnowledge()}
               {view === 'draft' && renderDraft()}
+              {view === 'memory' && (
+                <div className="space-y-6 animate-in h-full flex flex-col">
+                  <div>
+                    <h2 className="text-2xl font-bold tracking-tight dark:text-zinc-50">Memory Graph</h2>
+                    <p className="text-zinc-500 text-sm dark:text-zinc-400">Interactive visualization of your agent's neural knowledge base.</p>
+                  </div>
+                  <div className="flex-1 min-h-0">
+                    <MemoryGraph data={graphData} />
+                  </div>
+                </div>
+              )}
            </div>
         </div>
       </main>

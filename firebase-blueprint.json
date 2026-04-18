@@ -1,0 +1,88 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile information",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email"]
+    },
+    "Document": {
+      "title": "Document",
+      "description": "Metadata for an uploaded document",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "size": { "type": "string" },
+        "type": { "type": "string" },
+        "status": { "type": "string" },
+        "uploadedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "status"]
+    },
+    "KnowledgeChunk": {
+      "title": "KnowledgeChunk",
+      "description": "A chunk of text from a document with its embedding",
+      "type": "object",
+      "properties": {
+        "text": { "type": "string" },
+        "embedding": { "type": "array", "items": { "type": "number" } },
+        "docId": { "type": "string" },
+        "userId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["text", "embedding", "docId", "userId"]
+    },
+    "MemoryNode": {
+      "title": "MemoryNode",
+      "description": "A concept node in the agent's memory graph",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "label": { "type": "string" },
+        "type": { "type": "string" },
+        "importance": { "type": "number" }
+      },
+      "required": ["id", "label", "type"]
+    },
+    "MemoryLink": {
+      "title": "MemoryLink",
+      "description": "A connection between two concept nodes",
+      "type": "object",
+      "properties": {
+        "source": { "type": "string" },
+        "target": { "type": "string" },
+        "strength": { "type": "number" }
+      },
+      "required": ["source", "target"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "/users/{userId}/documents/{docId}": {
+      "schema": "Document",
+      "description": "User's uploaded documents"
+    },
+    "/users/{userId}/knowledge_chunks/{chunkId}": {
+      "schema": "KnowledgeChunk",
+      "description": "Embeddings for RAG"
+    },
+    "/users/{userId}/graph_nodes/{nodeId}": {
+      "schema": "MemoryNode",
+      "description": "Concepts for the memory graph"
+    },
+    "/users/{userId}/graph_links/{linkId}": {
+      "schema": "MemoryLink",
+      "description": "Connections for the memory graph"
+    }
+  }
+}
