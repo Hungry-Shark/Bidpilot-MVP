@@ -2,12 +2,24 @@ import { GoogleGenAI } from "@google/genai";
 import { db, auth } from "../firebase";
 import { collection, addDoc, query, where, getDocs, serverTimestamp } from "firebase/firestore";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+let aiInstance: GoogleGenAI | null = null;
+
+function getAI() {
+  if (!aiInstance) {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      throw new Error("GEMINI_API_KEY is missing for RAG service.");
+    }
+    aiInstance = new GoogleGenAI({ apiKey });
+  }
+  return aiInstance;
+}
 
 /**
  * Generates an embedding for a piece of text.
  */
 export async function getEmbedding(text: string): Promise<number[]> {
+  const ai = getAI();
   const result = await ai.models.embedContent({
     model: "gemini-embedding-2-preview",
     content: text,
@@ -101,6 +113,7 @@ export async function updateGraphMemory(insight: string) {
   const userId = auth.currentUser?.uid;
   if (!userId) return;
 
+  const ai = getAI();
   const response = await ai.models.generateContent({
     model: "gemini-3.1-pro-preview",
     config: {

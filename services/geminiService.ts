@@ -1,8 +1,18 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import * as RAGService from "./ragService";
 
-// Initialize AI with the environment variable
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+let aiInstance: GoogleGenAI | null = null;
+
+function getAI() {
+  if (!aiInstance) {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      throw new Error("GEMINI_API_KEY is missing. Please set it in your environment variables.");
+    }
+    aiInstance = new GoogleGenAI({ apiKey });
+  }
+  return aiInstance;
+}
 
 /**
  * The Historian Agent: Summarizes and indexes documents.
@@ -10,6 +20,7 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
  */
 export const runHistorianAgent = async (docName: string, docContent: string): Promise<string> => {
   try {
+    const ai = getAI();
     // REAL RAG: Indexing document content
     await RAGService.indexDocument(docName, docName, docContent);
     
@@ -40,6 +51,7 @@ export const runGatekeeperAgent = async (
     constraints: {label: string, value: string}[]
 ): Promise<{verdict: "GO" | "NO-GO", reasoning: string}> => {
   try {
+    const ai = getAI();
     // REAL RAG: Retrieve context from memory
     const context = await RAGService.retrieveRelevantContext(rfpText);
     
@@ -78,6 +90,7 @@ export const runGatekeeperAgent = async (
  */
 export const runArchitectAgent = async (rfpText: string): Promise<string> => {
   try {
+    const ai = getAI();
     const context = await RAGService.retrieveRelevantContext(`How to respond to: ${rfpText}`);
     
     const response = await ai.models.generateContent({
@@ -102,6 +115,7 @@ export const runArchitectAgent = async (rfpText: string): Promise<string> => {
  */
 export const runQuantAgent = async (question: string): Promise<string> => {
   try {
+    const ai = getAI();
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       config: {
@@ -120,6 +134,7 @@ export const runQuantAgent = async (question: string): Promise<string> => {
  */
 export const runAuditorAgent = async (proposalDraft: string, rfpText: string): Promise<{score: number, check: string}> => {
   try {
+    const ai = getAI();
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       config: {
